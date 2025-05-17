@@ -2,9 +2,11 @@ const express = require('express');
 const cors = require('cors');
 const pool = require('./db'); // Connexion à la base
 const app = express();
-const port = 5000;
+const port = process.env.PORT || 5000;
 const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt');
+const authRoutes = require('./routes/auth');
+const cartRoutes = require('./routes/cart');
 
 app.use(cors());
 app.use(express.json());
@@ -89,9 +91,9 @@ app.post('/api/cart/rayon', async (req, res) => {
 
 app.post('/api/cart/produit', async (req, res) => {
   try {
-    const response = await pool.query('SELECT * FROM produits ');
-    res.status(200).json(response.rows); // Returns an array of objects like [{ name: 'Chips' }]
-
+    const response = await pool.query('SELECT * FROM produits');
+    console.log("[DEBUG] Produits récupérés:", response.rows);
+    res.status(200).json(response.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erreur interne du serveur.' });
@@ -166,7 +168,7 @@ app.post('/api/cart/user', async (req, res) => {
 
 
 
-app.delete('/api/cart/delete', async (req, res) => {
+app.delete('/api/user_cart/delete', async (req, res) => {
   const { user_id, product_id } = req.body;
 
   try {
@@ -200,7 +202,169 @@ app.patch("/api/cart/update", async (req, res) => {
   }
 });
 
-// Démarrer le serveur
+
+app.post("/api/cart/create-product", async (req, res) => {
+  const { name, rayon_id } = req.body;
+
+  // Validation des champs
+  if (!name || !rayon_id) {
+    return res.status(400).json({ error: "Tous les champs sont obligatoires." });
+  }
+
+  try {
+    // Insertion dans la base de données
+    const result = await pool.query(
+        "INSERT INTO produits (name, rayon_id) VALUES ($1, $2)",
+        [name, rayon_id]
+    );
+
+    // Réponse avec le produit créé
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error("Erreur lors de la création du produit :", error);
+
+    // Gestion des erreurs PostgreSQL
+    if (error.code === "23505") {
+      res.status(400).json({ error: "Un produit avec ce nom existe déjà." });
+    } else {
+      res.status(500).json({ error: "Erreur serveur, veuillez réessayer plus tard." });
+    }
+  }
+});
+
+app.post("/api/create-store", async (req, res) => {
+  const { name, address, sections } = req.body;
+
+  // Log de debug pour voir la requête reçue
+  console.log("[DEBUG] Requête reçue pour création magasin :", JSON.stringify(req.body, null, 2));
+
+  // Vérifier que sections contient des données valides
+  if (!sections || !Array.isArray(sections) || sections.length === 0) {
+    return res.status(400).json({ error: "Aucune section valide fournie." });
+  }
+
+  // Vérifier que chaque section contient des valeurs valides
+  const invalidSections = sections.filter((section) =>
+      !section.grid_position || !section.category_name
+  );
+
+  if (invalidSections.length > 0) {
+    console.log("[DEBUG] Sections invalides :", invalidSections);
+    return res.status(400).json({ error: "Certaines sections ont des données invalides." });
+  }
+
+  try {
+    // Créer le magasin dans la table magasin
+    const result = await pool.query(
+        "INSERT INTO magasin (name, address) VALUES ($1, $2) RETURNING magasin_id",
+        [name, address]
+    );
+    const magasinId = result.rows[0].magasin_id;
+    console.log("[DEBUG] Magasin inséré, id:", magasinId);
+
+    // Créer les sections dans la table magasin_sections
+    const insertSectionsPromises = sections.map((section) => {
+        if (section.rayon_id !== undefined && section.rayon_id !== null) {
+            return pool.query(
+                "INSERT INTO magasin_sections (magasin_id, grid_position, category_name, rayon_id) VALUES ($1, $2, $3, $4)",
+                [magasinId, section.grid_position, section.category_name, section.rayon_id]
+            );
+        } else {
+            return pool.query(
+                "INSERT INTO magasin_sections (magasin_id, grid_position, category_name) VALUES ($1, $2, $3)",
+                [magasinId, section.grid_position, section.category_name]
+            );
+        }
+    });
+
+    // Attendre que toutes les sections soient insérées
+    await Promise.all(insertSectionsPromises);
+    console.log("[DEBUG] Sections insérées pour magasin:", magasinId);
+
+    res.status(201).json({ magasinId, name, address, sections });
+  } catch (err) {
+    console.error("[ERREUR] lors de la création du magasin ou des sections:", err);
+    res.status(500).json({ error: "Erreur lors de la création du magasin ou des sections.", details: err.message });
+  }
+});
+
+
+
+app.get("/api/stores", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM magasin");
+    res.json(result.rows);  // Renvoyer tous les magasins
+  } catch (err) {
+    console.error("Erreur lors de la récupération des magasins:", err);
+    res.status(500).json({ error: "Erreur lors de la récupération des magasins." });
+  }
+});
+
+app.get("/api/store/:id", async (req, res) => {
+  const { id } = req.params;
+
+  // Vérifier que l'ID est valide
+  if (!id || isNaN(id)) {
+    return res.status(400).json({ error: "ID du magasin invalide" });
+  }
+
+  try {
+    console.log("[DEBUG] Récupération du magasin ID:", id);
+    const result = await pool.query(
+        `SELECT m.name, m.address, s.section_id, s.grid_position, s.category_name, s.rayon_id
+         FROM magasin m
+                JOIN magasin_sections s ON m.magasin_id = s.magasin_id
+         WHERE m.magasin_id = $1`,
+        [id]
+    );
+
+    console.log("[DEBUG] Résultat de la requête:", result.rows);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Magasin non trouvé" });
+    }
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Erreur lors de la récupération des sections du magasin:", err);
+    res.status(500).json({ error: "Erreur lors de la récupération des sections du magasin." });
+  }
+});
+
+// Suppression d'un magasin (admin)
+app.delete('/api/store/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    // Supprimer les sections associées
+    await pool.query('DELETE FROM magasin_sections WHERE magasin_id = $1', [id]);
+    // Supprimer le magasin
+    await pool.query('DELETE FROM magasin WHERE magasin_id = $1', [id]);
+    res.status(200).json({ message: 'Magasin supprimé avec succès.' });
+  } catch (err) {
+    console.error('Erreur lors de la suppression du magasin:', err);
+    res.status(500).json({ error: 'Erreur lors de la suppression du magasin.' });
+  }
+});
+
+// Routes
+app.use('/api', authRoutes);
+app.use('/api/cart', cartRoutes);
+
+// Middleware de gestion des erreurs
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).json({
+        error: 'Une erreur est survenue',
+        message: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+});
+
+// Gestion des routes non trouvées
+app.use((req, res) => {
+    res.status(404).json({ error: 'Route non trouvée' });
+});
+
+// Démarrage du serveur
 app.listen(port, () => {
-  console.log(`Backend en écoute sur http://localhost:${port}`);
+    console.log(`Serveur démarré sur le port ${port}`);
 });

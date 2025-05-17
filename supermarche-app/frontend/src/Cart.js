@@ -1,6 +1,6 @@
-import React, {useEffect, useState} from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
-import {useNavigate} from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 const AddtoCart = () => {
     const [query, setQuery] = useState(""); // Stocke le nom du produit saisi
@@ -8,13 +8,16 @@ const AddtoCart = () => {
     const [error, setError] = useState(null); // Stocke les erreurs
     const [userEmail, setUserEmail] = useState("");
     const [category, setCategory] = useState(""); // Catégorie
-    const [categories, setCategories] = useState([]); // Pour stocker les catégorie
+    const [categories, setCategories] = useState([]); // Pour stocker les catégories
+    const [newProduct, setNewProduct] = useState({ name: "", rayon_id: "" }); // Stocke les données du nouveau produit
+    const [toast, setToast] = useState(""); // Pour la notification toast
+    const [toastType, setToastType] = useState("success"); // 'success' ou 'error'
     const navigate = useNavigate();
-    const [userId, setUserId] = useState("");
+    const [userCart, setUserCart] = useState([]); // Liste de courses actuelle
+
     // Récupération des informations utilisateur
     useEffect(() => {
         const email = localStorage.getItem("userEmail");
-        setUserId(userId);
         setUserEmail(email);
 
         if (!email) {
@@ -30,9 +33,7 @@ const AddtoCart = () => {
         const fetchCategories = async () => {
             try {
                 const response = await axios.post("http://localhost:5000/api/cart/rayon");
-                console.log(response.data);
-                setCategories(response.data); // Extract rayon names
-
+                setCategories(response.data);
             } catch (error) {
                 console.error("Erreur lors de la récupération des rayons:", error);
                 setError("Impossible de charger les catégories.");
@@ -42,16 +43,11 @@ const AddtoCart = () => {
         fetchCategories();
     }, []);
 
-
-
-
     useEffect(() => {
         const fetchProducts = async () => {
             try {
                 const response = await axios.post("http://localhost:5000/api/cart/produit");
-
-                console.log('data',response.data);
-                setProducts(response.data); // Stocke les produits dans l'état
+                setProducts(response.data);
             } catch (err) {
                 setError('Erreur lors de la récupération des produits');
                 console.error(err);
@@ -59,56 +55,93 @@ const AddtoCart = () => {
         };
 
         fetchProducts();
-    }, []); // L'effet se déclenche une seule fois au montage du composant
+    }, []);
 
-
+    // Récupérer la liste de courses de l'utilisateur au chargement
+    useEffect(() => {
+        const fetchUserCart = async () => {
+            const userId = localStorage.getItem('user_id');
+            if (!userId) return;
+            try {
+                const response = await axios.post('http://localhost:5000/api/cart/user', { user_id: userId });
+                if (response.data.items) setUserCart(response.data.items);
+            } catch (err) {
+                // ignore
+            }
+        };
+        fetchUserCart();
+    }, []);
 
     const handleAddToCart = async (product) => {
-        // Récupérer l'ID de l'utilisateur (tu peux le récupérer de l'état ou d'un contexte global)
+        // Vérifier si le produit est déjà dans la liste de courses
+        if (userCart.some(item => item.product_id === product.product_id)) {
+            setToastType("error");
+            setToast(`Ce produit est déjà dans votre liste de courses !`);
+            setTimeout(() => setToast(""), 2500);
+            return;
+        }
         const userId = localStorage.getItem('user_id');
-
-        // Crée un objet avec les informations nécessaires
         const productData = {
             user_id: userId,
-            created_at: new Date().toISOString(), // L'heure actuelle au format ISO
-            product_id: product.product_id, // L'ID du produit sélectionné
+            created_at: new Date().toISOString(),
+            product_id: product.product_id,
         };
-        console.log('productData',productData);
 
         try {
-            // Envoie la requête POST pour ajouter le produit à la liste de courses
             const response = await axios.post('http://localhost:5000/api/cart/add-to-list', productData);
-
-            // Vérifie la réponse de l'API
             if (response.status === 200) {
-                alert(`Produit ajouté à la liste de courses: ${product.name}`);
+                setToastType("success");
+                setToast(`Produit ajouté à la liste de courses: ${product.name}`);
+                setTimeout(() => setToast(""), 2500);
+                setUserCart([...userCart, { product_id: product.product_id, name: product.name }]);
             } else {
+                setToastType("error");
                 setError('Erreur lors de l\'ajout du produit à la liste.');
             }
         } catch (err) {
+            setToastType("error");
             console.error('Erreur:', err);
             setError('Erreur lors de l\'ajout du produit.');
         }
     };
-    function removeAccents(str) {
-        return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    }
 
+    const handleCreateProduct = async () => {
+        if (!newProduct.name || !newProduct.rayon_id) {
+            alert("Veuillez remplir tous les champs pour créer un produit.");
+            return;
+        }
+
+        try {
+            const response = await axios.post("http://localhost:5000/api/cart/create-product", newProduct);
+            if (response.status === 201) {
+                alert("Produit créé avec succès !");
+                setProducts([...products, response.data]); // Ajout du nouveau produit à la liste
+                setNewProduct({ name: "", rayon_id: "" }); // Réinitialisation du formulaire
+            }
+        } catch (error) {
+            console.error("Erreur lors de la création du produit:", error);
+            setError("Erreur lors de la création du produit.");
+        }
+    };
     const filteredProducts = products.filter((product) => {
-        // Normalisation de la recherche et du nom du produit (suppression des accents et mise en minuscules)
-        const normalizedQuery = removeAccents(query.toLowerCase());
-        const normalizedProductName = removeAccents(product.name.toLowerCase());
+        // Vérification si query est une chaîne valide
+        const normalizedQuery = query ? query.toLowerCase() : "";
 
-        const matchesQuery = normalizedProductName.includes(normalizedQuery);
+        // Vérification si product.name est une chaîne valide
+        const normalizedProductName = product.name ? product.name.toLowerCase() : "";
 
-        // Vérifie si la catégorie est définie et correspond au rayon_id du produit
-        const matchesCategory = category ? product.rayon_id === category.rayon_id : true;
+        // Correspondance avec la requête de recherche
+        const matchesQuery = normalizedQuery
+            ? normalizedProductName.includes(normalizedQuery)
+            : true;
+
+        // Correspondance avec la catégorie
+        const matchesCategory = category && category.rayon_id
+            ? product.rayon_id === category.rayon_id
+            : true;
 
         return matchesQuery && matchesCategory;
     });
-
-
-
 
     if (!userEmail) {
         return (
@@ -119,69 +152,126 @@ const AddtoCart = () => {
             </div>
         );
     }
+
     return (
         <div className="bg-gray-800 min-h-screen p-6 text-white">
-            <h1 className="text-3xl font-bold mb-6">Ajouter a la liste de course</h1>
-
-            {/* Zone de recherche */}
-            <div className="flex flex-wrap items-center gap-4 mb-6">
-                <input
-                    type="text"
-                    placeholder="Entrez un nom de produit"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    className="p-2 flex-1 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring focus:ring-blue-500"
-                />
-                <select onChange={(e) => setCategory(categories.find(c => c.rayon_id === parseInt(e.target.value)))} className={"p-2 rounded-md border w-full border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring focus:ring-blue-500"}>
-                    <option value="">Toutes les catégories</option>
-                    {categories.map((category) => (
-                        <option key={category.rayon_id} value={category.rayon_id}>
-                            {category.name}
-                        </option>
-                    ))}
-                </select>
-            </div>
-
-            {/* Gestion des erreurs */}
-            {error && <p className="text-red-500">{error}</p>}
-
-            {/* Résultats */}
-            {filteredProducts.length > 0 ? (
-                <div className="mt-6">
-                    <h2 className="text-2xl font-semibold mb-4">Résultats :</h2>
-                    <ul className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-1 lg:grid-cols-1 xl:grid-cols-1 gap-6">
-                        {filteredProducts.map((product) => (
-                            <li
-                                key={product.product_id}
-                                className="p-2 bg-gray-700 rounded-lg shadow-lg hover:shadow-xl flex justify-between items-center"
-                            >
-                                <div className="flex items-center">
-                                    <img
-                                        src={`/product_images/${product.name.replace(/\s+/g, '_')}.jpg`} // Remplace les espaces par des underscores
-                                        alt={product.name}
-                                        className="h-24 w-24 object-cover border rounded-md mb-3"
-                                        onError={(e) => e.target.src = 'fallback-image-url'} // Image de remplacement en cas d'erreur
-                                    />
-                                    <h3 className="text-lg font-bold mb-2 ml-4">
-                                        {product.name}
-                                    </h3>
-                                </div>
-
-                                <button
-                                    className="mt-3 px-3 py-2 bg-green-600 rounded-md text-white hover:bg-green-700 focus:outline-none focus:ring focus:ring-green-500 xl:mr-5 lg:mr- md:mr-5 sm:mr-5"
-                                    onClick={() => handleAddToCart(product)} // Appel de la fonction lors du clic
-                                >
-                                    ✔
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
+            {/* Toast notification */}
+            {toast && (
+                <div style={{
+                    position:'fixed', top:20, left:20, background:'rgba(255,255,255,0.95)',
+                    color: toastType === 'success' ? '#27ae60' : '#e74c3c',
+                    border: `2px solid ${toastType === 'success' ? '#27ae60' : '#e74c3c'}`,
+                    padding:'1rem 2rem', borderRadius:8, zIndex:1000, fontWeight:'bold',
+                    boxShadow:'0 2px 8px #0003', minWidth:260
+                }}>
+                    {toast}
                 </div>
-            ) : (
-                <p className="text-gray-400">Aucun produit trouvé.</p>
             )}
+            <h1 className="text-3xl font-bold ml-20 mb-10 mt-10">Ajouter à la liste de courses</h1>
+
+            <div className="flex flex-wrap gap-6">
+                {/* Colonne gauche : Création de produit */}
+                <div className="flex-1 min-w-[200px] max-w-[250px] mt-60 ">
+                    <h2 className="text-xl font-bold mb-4">Envie de rajouter un produit ? Faites le nous savoir !</h2>
+                    <div className="flex flex-col gap-4">
+                        <input
+                            type="text"
+                            placeholder="Nom du produit"
+                            value={newProduct.name}
+                            onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
+                            className="p-2 rounded-md border w-full border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring focus:ring-blue-500"
+                        />
+                        <select
+                            value={newProduct.rayon_id}
+                            onChange={(e) => setNewProduct({ ...newProduct, rayon_id: e.target.value })}
+                            className="p-2 rounded-md border w-full border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring focus:ring-blue-500"
+                        >
+                            <option value="">Sélectionnez une catégorie</option>
+                            {categories.map((category) => (
+                                <option key={category.rayon_id} value={category.rayon_id}>
+                                    {category.name}
+                                </option>
+                            ))}
+                        </select>
+                        <button
+                            onClick={handleCreateProduct}
+                            className="px-4 py-2 bg-blue-600 rounded-md text-white hover:bg-blue-700"
+                        >
+                            Faire une demande
+                        </button>
+                    </div>
+                </div>
+
+                {/* Colonne droite : Recherche et résultats */}
+                <div className="flex-1 min-w-[300px]">
+                    <div className="flex flex-wrap items-center gap-4 mb-6">
+                        <input
+                            type="text"
+                            placeholder="Entrez un nom de produit"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            className="p-2 flex-1 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring focus:ring-blue-500"
+                        />
+                        <select
+                            onChange={(e) => setCategory(categories.find(c => c.rayon_id === parseInt(e.target.value)))}
+                            className="p-2 rounded-md border border-gray-600 bg-gray-700 text-white focus:outline-none focus:ring focus:ring-blue-500"
+                        >
+                            <option value="">Toutes les catégories</option>
+                            {categories.map((category) => (
+                                <option key={category.rayon_id} value={category.rayon_id}>
+                                    {category.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {error && <p className="text-red-500">{error}</p>}
+
+                    {filteredProducts.length > 0 ? (
+                        <ul className="flex flex-wrap gap-6">
+                            {filteredProducts.map((product) => {
+                                const isInCart = userCart.some(item => item.product_id === product.product_id);
+                                return (
+                                    <li
+                                        key={product.product_id}
+                                        className="p-2 bg-gray-700 rounded-lg shadow-lg flex justify-between items-center w-full sm:w-[48%] lg:w-[30%]"
+                                    >
+                                        <div className="flex items-center">
+                                            <span className="ml-2 text-lg font-semibold">{product.name}</span>
+                                            {isInCart && (
+                                                <span style={{
+                                                    marginLeft:8,
+                                                    background:'#fff',
+                                                    color:'#27ae60',
+                                                    border:'1px solid #27ae60',
+                                                    borderRadius:6,
+                                                    fontSize:'0.9rem',
+                                                    fontWeight:'bold',
+                                                    padding:'2px 8px'
+                                                }}>
+                                                    À prendre dans ce rayon
+                                                </span>
+                                            )}
+                                        </div>
+                                        <button
+                                            onClick={() => handleAddToCart(product)}
+                                            className="ml-4 px-4 py-2 bg-green-600 rounded-md text-white hover:bg-green-700"
+                                            disabled={isInCart}
+                                        >
+                                            Ajouter
+                                        </button>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    ) : (
+                        <p className="text-gray-400">Aucun produit trouvé.</p>
+                    )}
+                </div>
+            </div>
         </div>
     );
+
 };
 
 export default AddtoCart;

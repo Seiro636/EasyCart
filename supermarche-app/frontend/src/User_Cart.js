@@ -67,7 +67,7 @@ const User_Cart = () => {
     const handleDelete = async (productId) => {
         if (confirmDelete === productId) {
             try {
-                await axios.delete("http://localhost:5000/api/cart/delete", {
+                await axios.delete("http://localhost:5000/api/user_cart/delete", {
                     data: { user_id: userId, product_id: productId },
                 });
 
@@ -115,12 +115,6 @@ const User_Cart = () => {
                             }`}
                         >
                             <div className="flex items-center">
-                                <img
-                                    src={`/product_images/${item.name.replace(/\s+/g, "_")}.jpg`}
-                                    alt={item.name}
-                                    className="h-24 w-24 object-cover border rounded-md mb-3"
-                                    onError={(e) => (e.target.src = "fallback-image-url")}
-                                />
                                 <h3 className="text-2xl  text-gray-200 ml-4">
                                     {item.name}
                                 </h3>

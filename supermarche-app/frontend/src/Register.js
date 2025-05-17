@@ -1,5 +1,6 @@
     import React, {useState} from 'react';
     import './App.css';
+    import {useNavigate} from "react-router-dom";
 
 
     function RegisterPage() {
@@ -7,7 +8,7 @@
         let [password, setPassword] = useState('');
         let [password2, setPassword2] = useState('');
         const [error, setError] = useState('');
-
+        const navigate = useNavigate();
         const handleSubmit = async (e) => {
             e.preventDefault();
             // Simuler une connexion
@@ -30,6 +31,7 @@
                         password2 = '';
                         setEmail('');
                         alert(data.message); // Inscription réussie
+                        navigate("/login");
                     } else {
                         setError(data.error); // Affiche l'erreur retournée
                     }

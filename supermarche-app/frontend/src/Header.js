@@ -41,6 +41,8 @@ const Header = () => {
 
                 {/* Desktop Navigation */}
                 <nav className="hidden md:flex space-x-6">
+                    <a href="/store_list" className="hover:text-gray-400">Parcourir les magasin</a>
+                    <a href="/create_shop" className="hover:text-gray-400">Creation du magasin</a>
                     <a href="/cart" className="hover:text-gray-400">Liste de course</a>
                     <a href="/user_cart" className="hover:text-gray-400">Mon panier</a>
                     {isLoggedIn ? (

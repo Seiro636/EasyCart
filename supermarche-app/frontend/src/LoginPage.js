@@ -37,6 +37,11 @@ function LoginPage() {
                         localStorage.setItem('isLoggedIn', 'true');
                         localStorage.setItem('userEmail', email);
                         localStorage.setItem('user_id', response.data.user_id);
+                        if (response.data.role) {
+                            localStorage.setItem('userRole', response.data.role);
+                        } else {
+                            localStorage.removeItem('userRole');
+                        }
                         console.log('user_id',response.data.user_id);
                         const createdAt = new Date(response.data.created_at);
                         const formattedDate = `${createdAt.getDate()}/${String(createdAt.getMonth() + 1)}/${String(createdAt.getFullYear())}`;

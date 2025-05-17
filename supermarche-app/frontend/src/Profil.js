@@ -4,13 +4,16 @@ const Profil = () => {
     const [userEmail, setUserEmail] = useState('');
     const [created_at, setcreated_at] = useState('');
     const [userData, setUserData] = useState(null);
+    const [userRole, setUserRole] = useState('user');
 
     useEffect(() => {
         // Ici vous pouvez récupérer les informations de l'utilisateur depuis localStorage ou une API
         const email = localStorage.getItem('userEmail');
         const created_at = localStorage.getItem('created_at'); // Ajouter un nom si nécessaire
+        const role = localStorage.getItem('userRole') || 'user';
         setUserEmail(email);
         setcreated_at(created_at);
+        setUserRole(role);
         console.log(email);
         console.log(created_at);
         // Si vous avez une API, vous pouvez la consulter ici pour charger des informations supplémentaires
@@ -41,6 +44,10 @@ const Profil = () => {
                         <div className="flex items-center">
                             <span className="font-medium text-white">Date de Création :</span>
                             <span className="text-white ml-5">{created_at}</span>
+                        </div>
+                        <div className="flex items-center">
+                            <span className="font-medium text-white">Rôle :</span>
+                            <span className="text-white ml-5">{userRole}</span>
                         </div>
 
                         {/* Si vous avez plus d'informations à afficher */}
